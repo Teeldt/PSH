@@ -59,49 +59,8 @@ def calculate_base_price_day(df, day_span, zone):
         df['Base_price'].fillna(method='ffill', inplace=True)
     return df
 
-# This method is not used
-def calculate_base_price_trend(df, day_span=4, zone='SE2', diff=dt.timedelta(days=15), train_span=dt.timedelta(days=90), train_run_delay=dt.timedelta(days=4+90)):
-    # diff = dt.timedelta(days=15)            # how large period each training set is used for
-    # train_span = dt.timedelta(days=180)     # how large each training set is. If diff+train_span+day_span is larger than one year, errors within the studied period.
-    t_start = df.first_valid_index()
-    t_end = df.last_valid_index()
-    dur = (t_end - t_start) // diff
-    day_span_back = 1
-    day_span_forward = 4
-    l = df[zone].rolling(24*day_span_back, step=24)
-    df["Pricechange"] = df[zone].sub(df[zone].rolling(24*day_span_back, step=24).mean()) # calculate pricechange once a day as an average of the difference in relation to last day
-    df['Pricechange'].fillna(method='ffill', inplace=True)                                 # fill up with values from beginning of the day
-    # df["Pricechange"] = (df[zone] - df[zone].shift(24)).rolling(24*day_span_back, step=24).mean()
-
-    df = calculate_base_price_day(df, day_span, zone)
-    df = df.rename({'Base_price': 'base_forward'}, axis=1)
-    df = calculate_base_price_day(df, -day_span, zone)
-    df = df.rename({'Base_price': 'base_back'}, axis=1)
-    indexer = pd.api.indexers.FixedForwardWindowIndexer(window_size=24*day_span_forward)
-    df["Futureprice"] = df[zone].sub(df.SE2.rolling(indexer).mean())
-    df['base_diff'] = df['base_forward'] - df['base_back']
-    # baseprice = df.Series(index)
-    for p in range(0, dur):
-        t_begin_train = t_start + p*diff                                    # set train starting time, changing diff every iteration
-        t_stop_train = t_begin_train + train_span - dt.timedelta(hours=1)     # set train end time, train_span later
-
-        train_set = df.loc[t_begin_train:t_stop_train, [zone, 'Pricechange', 'Futureprice', 'base_forward', 'base_back', 'base_diff']]
-        res = smf.ols('base_forward ~ base_back + Pricechange', data = train_set).fit()
-        # res = smf.ols('base_diff ~ Pricechange', data = train_set).fit()
-        ps = res.params
-
-        # run time is after the train time, and also after day_span in order to not run on train data
-        t_begin_run = t_begin_train + train_run_delay
-        # stops diff later, then new data is used
-        t_stop_run = t_begin_run + diff
-        # t_stop_run = t_start + (p+2)*diff + dt.timedelta(days=day_span, hours=-1)
-
-        df.loc[t_begin_run:t_stop_run, 'Base_price'] = ps.Intercept + ps.base_back*df.loc[t_begin_run:t_stop_run, 'base_back'] + ps['Pricechange']*df.loc[t_begin_run:t_stop_run, 'Pricechange']
-        # df.loc[t_begin_run:t_stop_run, 'Base_price'] = df.loc[t_begin_run:t_stop_run, 'base_back'] + ps.Intercept + ps['Pricechange']*df.loc[t_begin_run:t_stop_run, 'Pricechange']
-        # df.loc[t_begin_run:t_stop_run, 'Base_price'] = p.Intercept + p.base_back*df.loc[t_begin_run:t_stop_run, 'base_back']
-    return df
-
 def calculate_base_price_trend_randomwalk(df, day_span, zone):
+    """Using a random walk method to calculate a base price, in respect to price trends"""
     day_span_back = day_span
     # day_span_forward = 4
     df = calculate_base_price_day(df, day_span, zone)
@@ -110,12 +69,13 @@ def calculate_base_price_trend_randomwalk(df, day_span, zone):
     df = df.rename({'Base_price': 'base_back'}, axis=1)
     r = 0.75
     df['Base_price'] = df['base_back'] + r*(df['base_back'] - df['base_back'].shift(24))
-    # try with andragrader
+    # try with second degree equation
     # df['Base_price'] = df['base_back'] + r*(df['base_back'] - 1/2*df['base_back'].shift(24) - 1/2*df['base_back'].shift(48))
     # (sum((df.base_forward - df.base_back)**2) - sum((df.base_forward - df.Base_price)**2))/len(df)
     return df
 
 def calculate_base_price_wind_rolling(df, day_span=4, zone='SE1', diff=dt.timedelta(days=7), train_span=dt.timedelta(days=90), train_run_delay= dt.timedelta(days=4+90), regress=smf.rlm):
+    """Using a regression method to calculate a base price, taking future weather into account"""
     # diff = dt.timedelta(days=15)            # how large period each training set is used for
     # train_span = dt.timedelta(days=180)     # how large each training set is. If diff+train_span+day_span is larger than one year, errors within the studied period.
 
@@ -155,9 +115,16 @@ def calculate_base_price_wind_rolling(df, day_span=4, zone='SE1', diff=dt.timede
     return df
 
 def calculate_earnings(years=[22], method=calculate_base_price_day, day_span=4, maxgen=335, maxpump=255, maxstorage=25000, pump_eff = 0.9, gen_eff = 0.9, zone = 'SE2'):
-    """ year: which year to look at
-        rate: modifier for buy and sell curves (functions of water level)
-        day_span: days ahead to consider when setting base price. Negative value for earlier days."""
+    """ The main function for running the model of a Pumped storage hydroelectricity power station. Returns a dataframe with details about the simulated operations.
+        years: list of years to consider
+        method: base price method, as a function name
+        day_span: days ahead to consider when setting base price. Negative value for earlier days.
+        maxgen: maximum generation when in generation mode, in MW
+        maxpump: maximum pumping power when in pumping mode, in MW
+        maxstorage: available storage capacity in upper reservoir, in MWh
+        pump_eff: efficiency of the pump
+        gen_eff: efficiency of the generator
+        zone: price region considered"""
     # Import prices
     load_years = list(range(years[0]-1, years[-1]+2))
     frame = l.load_weather_price(load_years, 'WindSpeed')
@@ -194,18 +161,9 @@ def calculate_earnings(years=[22], method=calculate_base_price_day, day_span=4, 
             day = start_date + dt.timedelta(d)
             next_day = day + dt.timedelta(days=1)
 
-            ## to include buy-sell-curves
-            ## Linear function of water level. Buy more when levels are low, sell when high.
-            # buy_price = buy_curve(water_level, rate)*base_price
-            # sell_price = sell_curve(water_level, rate)*base_price
 
             # skip first hour of the year, iterate day by day
             for t, h in df[df.year == (y+2000)][:].loc[day.isoformat()].iterrows():
-
-                ## to include buy-sell-curves
-                # water_level = h_before.Storage / maxstorage
-                # h.Buy_price = buy_curve(water_level, rate)*h.Base_price
-                # h.Sell_price = sell_curve(water_level, rate)*h.Base_price
 
                 # If pumping water 
                 if (h.Price < h.Buy_price) & (h_before.Storage + maxpump < maxstorage):
@@ -240,7 +198,6 @@ def calculate_earnings(years=[22], method=calculate_base_price_day, day_span=4, 
                     h.hourIncome = h.Price * h.Generation
                 
                 h.Total_generation = h_before.Total_generation + h.Generation
-                # df.drop_duplicates(inplace=True)
                 df.loc[t] = h
                 h_before = h
 
