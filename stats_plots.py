@@ -351,15 +351,14 @@ def lineplot_waterlevel():
 
 def wind_violinplot():
     # df = plot_day_price([21])
-    # years = [11, 21]
-    years = list(range(11,22))
-    # df = l.load_more_prices(years)
+    years = [12, 21]
+    # years = list(range(11,22))
     df = l.load_plot_df(years)
-    # df["Year"] = df.index.year
-    df["Wind velocity bins"] = pd.qcut(df['Weather average'], q = 8, precision=1)
+    df = df[(df.year == 2012) | (df.year == 2021)]
+    df["Wind velocity bins"] = pd.qcut(df['WindSpeed'], q = 8, precision=1)
     # df["Wind velocity bins"] = pd.cut(df['Weather average'], bins = 50, precision=1)
     sns.set(rc={'figure.figsize':(9,4)})
-    ax = sns.violinplot(data=df, x = 'Wind velocity bins', y='SE2', inner='quartiles', width=1)
+    ax = sns.violinplot(data=df, x = 'Wind velocity bins', y='SE2', hue='year', inner='quartiles', width=1, split=True)
     # ax = sns.boxplot(data=df, x = 'Wind velocity bins', y='Price', fliersize=0)
     ax.tick_params(axis='x', labelrotation=90)
     plt.ylim([-30, 1100])
@@ -479,7 +478,7 @@ def wind_dependency_baseprice():
     plt.legend(loc='upper right')
     plt.xlabel('Wind difference')
     plt.ylabel('Baseprice difference')
-    plt.savefig('figures/wind_diff-base_diff_year.png')
+    # plt.savefig('figures/wind_diff-base_diff_year.png')
     plt.show()
 
 
@@ -587,13 +586,14 @@ def energy_production_overview():
     df_smooth = df[cols].ewm(span=24*30*2).mean()
     map = {'Nuclear Production': 'Nuclear', 'Water Production': 'Water', 'Wind Production': 'Wind', 'Heat Production': 'Heat', 'Gas/Diesel production': 'Gas/Diesel', 'Solar Production': 'Solar'}
     # exponentially weighted
-    df_smooth.rename(mapper = map, axis=1)
-    df_smooth = df_smooth.div(1000)
-    sns.lineplot(data=df_smooth)
+    df_rename = df_smooth.rename(mapper = map, axis=1)
+    df_rename = df_rename.div(1000)
+    sns.lineplot(data=df_rename)
     # df_smooth.plot.area(stacked=False)
     plt.ylabel('Production [GWh/h]')
     plt.xlabel('Time')
     # df['Total Consumption'].plot.line()
+    plt.tight_layout()
     # plt.savefig('figures/')
     plt.show()
 
@@ -628,17 +628,19 @@ def base_price_plot():
 def two_week():
     # years = [19, 20, 21, 22]
     years = list(range(11,23))
+    day_span = 4
     zone = 'SE2'
     df = l.load_plot_df(years)
     df['Price'] = df[zone]
-    df = calculate_base_price_day(df, day_span, zone)
+    df = om.calculate_base_price_day(df, day_span, zone)
     df = df.rename({'Base_price': 'Baseprice future'}, axis=1)
-    df = calculate_base_price_day(df, -day_span, zone)
+    df = om.calculate_base_price_day(df, -day_span, zone)
     df = df.rename({'Base_price': 'Baseprice history'}, axis=1)
     t_start = dt.datetime(year=2022, month=12, day=15)
     days = 14
     t_end = t_start + dt.timedelta(days=days)
     data = df.loc[t_start:t_end, [zone, 'Baseprice history', 'Baseprice future']]
+    sns.set(rc={'figure.figsize':(9,3.5)})
     sns.lineplot(data=data)
     # sns.lineplot(data=df_window, y = zone, x = df_window.index, legend='Price', format)
     # sns.lineplot(data=df_window, y = 'base_back', x = df_window.index, legend='Base price backwards')

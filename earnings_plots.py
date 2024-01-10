@@ -300,7 +300,7 @@ def corrolate_earnings():
     df_back = om.calculate_earnings(years, om.calculate_base_price_day, -days_ahead)
     df_wind = om.calculate_earnings(years, om.calculate_base_price_wind_rolling, days_ahead)
 
-    df = df_wind # change to the one you want to consider
+    df = df_for # change to the one you want to consider
     
     ans_df = pd.DataFrame(np.nan, index=range(0, elements), columns=['income', 'generation', 'mean_price', 'deviation', 'waterchange', 'earnings', 'start_time', 'end_time'])
     pd.options.mode.chained_assignment = None
@@ -326,6 +326,7 @@ def corrolate_earnings():
     plot_df = ans_df.dropna()
     plot_df['Year'] = plot_df['Year'].astype(int)
     ans_df.dropna(inplace=True)
+    plot_df = plot_df['year']
     plot_df = plot_df[ans_df['Year'] != 2017]
     plot_df = plot_df[plot_df['Year'] != 2018]
     plot_df = plot_df[plot_df['Year'] != 2023]
@@ -336,7 +337,8 @@ def corrolate_earnings():
     plt.legend(loc='upper left')
     # plt.xscale('log')
     # plt.yscale('log')
-    plt.savefig('figures/std_wind_2019-20222.png')
+    # plt.savefig('figures/std_wind_2019-2022.png')
+    plt.savefig('figures/std_future_2019-2022.png')
     plt.show()
 
     # plt.plot(earnings)
@@ -525,27 +527,32 @@ def three_reservoir():
     full_years = [i + 2000 for i in years]
     high = om.calculate_earnings(years, om.calculate_base_price_wind_rolling, 4, 335, 255, 25000, 1.0, 1.0, 'SE2')
     low = om.calculate_earnings(years, om.calculate_base_price_wind_rolling, 4, 265, 255, 25000, 0.9, 0.9, 'SE2')
-    res_dfs = {"Storjuktan-Blaiksjön-Storuman": high, 'Storjuktan-Blaiksjön-Storjuktan': low}
+    res_dfs = {"Three reservoir, unlimited": high, 'Two reservoir': low}
     
     res_table = create_res_table_variable(full_years, res_dfs)
 
     # table = pd.DataFrame(columns=['Income', 'After grid tariff', 'Generation', 'Year'], index=range(0, len(full_years)*len(dict_dfs)*(divides+1)))
 
-    high_total_generation = 315*1000 # MWh
+    high_total_generation = 472.5*1000 # MWh
 
-    income_highfraction = res_table[res_table.Variable == 'Storjuktan-Blaiksjön-Storuman'].Income*high_total_generation/res_table[res_table.Variable == 'Storjuktan-Blaiksjön-Storuman'].Generation
-    income_lowfraction = res_table[res_table.Variable == 'Storjuktan-Blaiksjön-Storjuktan'].Income.values*(1-high_total_generation/res_table[res_table.Variable == '"Storjuktan-Blaiksjön-Storuman"'].Generation)
+    income_highfraction = res_table[res_table.Variable == 'Three reservoir, unlimited'].Income.values*high_total_generation/res_table[res_table.Variable == 'Three reservoir, unlimited'].Generation.values
 
-    df2 = pd.DataFrame({'Variable': ['Result']*5,
+    income_lowfraction = res_table[res_table.Variable == 'Two reservoir'].Income.values*(1-high_total_generation/res_table[res_table.Variable == 'Three reservoir, unlimited'].Generation)
+
+    df2 = pd.DataFrame({'Variable': ['Three-reservoir, limited']*5,
                         'Income': (income_highfraction + income_lowfraction).values,
+                        'Year': full_years})
+    
+    df3 = pd.DataFrame({'Variable': ['Only generation']*5,
+                        'Income': 45,
                         'Year': full_years})
                         
     
-    full_table = pd.concat([res_table, df2], ignore_index=True)
+    full_table = pd.concat([res_table, df3, df2], ignore_index=True)
     full_table.rename({'Variable': 'Operation mode'}, axis=1, inplace=True)
 
-    sns.set(rc={'figure.figsize':(9,4)})
-    sns.catplot(data=full_table, kind='bar', x='Year', y='Income', hue='Operation mode', legend_out=False)
+    # sns.set(rc={'figure.figsize':(9,4)})
+    ax = sns.catplot(data=full_table, kind='bar', x='Year', y='Income', hue='Operation mode', legend_out=False, height=4, aspect=9/4)
     plt.ylabel('Income [MSEK]')
     plt.xlabel('Year')
     plt.savefig('figures/three-reservoir.eps')
