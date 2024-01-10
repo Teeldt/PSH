@@ -3,8 +3,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import datetime as dt
 import seaborn as sns
-import statsmodels.api as sm
-import statsmodels.formula.api as smf
 import operations_model as om
 import loader as l
 import earnings_plots as ep
@@ -13,7 +11,6 @@ importlib.reload(om)
 importlib.reload(l)
 importlib.reload(ep)
 
-from geopy import distance
 sns.set_theme()
 
 

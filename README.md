@@ -11,6 +11,14 @@ Code is written using Python 3.7.2
 - built upon Matplotlib.
 Measuring data from SMHI was collected using smhi-open-data.
 
+To install, run
+
+    python3 -m venv .venv
+    source .venv/bin/activate
+    pip3 install -r requirements.txt
+
+The functions in earnings_plots.py and stats_plots.py are often run indepedently to generate and save the requested plots.
+
 ## Data
 To run the code, there is need for supplemental data.
 
